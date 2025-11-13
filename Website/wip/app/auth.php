@@ -14,19 +14,29 @@ function auth_login(string $username, string $password): bool
     $result = $stmt->get_result();
     $user = $result->fetch_assoc();
     $stmt->close();
-    
+
+    // Use a dummy hash for timing attack prevention
+    // If user doesn't exist, still verify against a dummy hash to maintain constant timing
+    $dummyHash = '$2y$10$abcdefghijklmnopqrstuv.wxyz0123456789ABCDEFGHIJKLMNOPQRST';
+    $hashToVerify = $user ? $user['password_hash'] : $dummyHash;
+
+    // Always verify password, even if user doesn't exist
+    $passwordValid = password_verify($password, $hashToVerify);
+
+    // Check all conditions after password verification
     if (!$user) {
         return false;
     }
-    
+
     if (!(bool) $user['is_active']) {
         return false;
     }
-    
-    if (!password_verify($password, $user['password_hash'])) {
+
+    if (!$passwordValid) {
         return false;
     }
-    
+
+    // Only update session and database if all checks pass
     $_SESSION['admin_user'] = [
         'id' => (int) $user['id'],
         'username' => $username,
@@ -34,12 +44,12 @@ function auth_login(string $username, string $password): bool
         'full_name' => $user['full_name'],
         'logged_in_at' => time(),
     ];
-    
+
     $update = $conn->prepare("UPDATE admin_users SET last_login = NOW() WHERE id = ?");
     $update->bind_param('i', $user['id']);
     $update->execute();
     $update->close();
-    
+
     return true;
 }
 

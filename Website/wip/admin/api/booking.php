@@ -35,6 +35,7 @@ try {
 
 function handle_get(): void
 {
+    global $user;
     $bookingId = $_GET['id'] ?? null;
     $customerId = isset($_GET['customer_id']) ? (int) $_GET['customer_id'] : null;
 
@@ -43,6 +44,12 @@ function handle_get(): void
         if (!$detail) {
             json_response(['success' => false, 'message' => 'Booking not found'], 404);
         }
+
+        // Authorization check: staff can only view bookings assigned to them
+        if (!user_can_view_booking($user, $bookingId)) {
+            json_response(['success' => false, 'message' => 'Access denied'], 403);
+        }
+
         json_response(array_merge(['success' => true], $detail));
     }
 
@@ -90,6 +97,11 @@ function handle_put(array $payload, array $user): void
     $current = get_booking_row($bookingId);
     if (!$current) {
         json_response(['success' => false, 'message' => 'Booking not found'], 404);
+    }
+
+    // Authorization check: staff can only modify bookings assigned to them
+    if (!user_can_modify_booking($user, $bookingId)) {
+        json_response(['success' => false, 'message' => 'Access denied'], 403);
     }
 
     $updates = $payload['updates'] ?? [];
@@ -640,4 +652,74 @@ function log_sms_attempt(string $bookingId, string $phone, string $message, stri
     $stmt->bind_param('sssss', $bookingId, $phone, $message, $status, $error);
     $stmt->execute();
     $stmt->close();
+}
+
+/**
+ * Check if a user has permission to view a specific booking
+ * - Admins and managers can view all bookings
+ * - Staff can only view bookings they are assigned to
+ */
+function user_can_view_booking(array $user, string $bookingId): bool
+{
+    $role = $user['role'] ?? 'staff';
+
+    // Admins and managers can view all bookings
+    if (in_array($role, ['admin', 'manager'], true)) {
+        return true;
+    }
+
+    // Staff can only view bookings they're assigned to
+    if ($role === 'staff') {
+        $userId = $user['id'] ?? null;
+        if (!$userId) {
+            return false;
+        }
+
+        // Check if this staff member is assigned to this booking
+        // First, get staff_id from admin_users -> staff mapping
+        $conn = db();
+        $stmt = $conn->prepare("
+            SELECT s.id FROM staff s WHERE s.user_id = ? LIMIT 1
+        ");
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $staffRow = $result->fetch_assoc();
+        $stmt->close();
+
+        if (!$staffRow) {
+            return false;
+        }
+
+        $staffId = (int) $staffRow['id'];
+
+        // Check booking assignment
+        $stmt = $conn->prepare("
+            SELECT 1 FROM booking_assignments
+            WHERE booking_id = ? AND staff_id = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param('si', $bookingId, $staffId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $hasAssignment = $result->num_rows > 0;
+        $stmt->close();
+
+        return $hasAssignment;
+    }
+
+    // Default deny
+    return false;
+}
+
+/**
+ * Check if a user has permission to modify a specific booking
+ * - Admins and managers can modify all bookings
+ * - Staff can only modify bookings they are assigned to
+ */
+function user_can_modify_booking(array $user, string $bookingId): bool
+{
+    // For now, use the same logic as viewing
+    // In the future, this could be made more restrictive
+    return user_can_view_booking($user, $bookingId);
 }

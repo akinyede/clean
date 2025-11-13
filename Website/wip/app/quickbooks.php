@@ -202,9 +202,17 @@ class QuickBooksClient
     {
         $this->requireConfiguration();
 
+        // Validate email format strictly before using in query
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new InvalidArgumentException('Invalid email format for QuickBooks customer search');
+        }
+
+        // Properly escape for QuickBooks Query Language (single quotes must be doubled)
+        $escapedEmail = str_replace("'", "''", $email);
+
         $query = sprintf(
             "SELECT * FROM Customer WHERE PrimaryEmailAddr.Address = '%s' MAXRESULTS 1",
-            addslashes($email)
+            $escapedEmail
         );
 
         $response = $this->request('GET', 'query', null, [
@@ -327,7 +335,19 @@ class QuickBooksClient
             return;
         }
 
-        $decoded = json_decode((string) file_get_contents($this->tokenCache), true);
+        $encrypted = file_get_contents($this->tokenCache);
+        if (!$encrypted) {
+            return;
+        }
+
+        // Try to decrypt - if it fails, might be old unencrypted format
+        $decrypted = $this->decryptTokenData($encrypted);
+        if (!$decrypted) {
+            // Fallback: try reading as plain JSON (for backward compatibility)
+            $decrypted = $encrypted;
+        }
+
+        $decoded = json_decode($decrypted, true);
         if (!$decoded) {
             return;
         }
@@ -344,7 +364,88 @@ class QuickBooksClient
             return;
         }
 
-        file_put_contents($this->tokenCache, json_encode($this->tokenData, JSON_PRETTY_PRINT));
+        $json = json_encode($this->tokenData, JSON_PRETTY_PRINT);
+        $encrypted = $this->encryptTokenData($json);
+
+        // Set restrictive file permissions (owner read/write only)
+        file_put_contents($this->tokenCache, $encrypted);
+        @chmod($this->tokenCache, 0600);
+    }
+
+    /**
+     * Encrypt sensitive token data using AES-256-GCM
+     */
+    private function encryptTokenData(string $data): string
+    {
+        $key = $this->getEncryptionKey();
+        $nonce = random_bytes(12); // GCM standard nonce size
+        $tag = '';
+
+        $ciphertext = openssl_encrypt(
+            $data,
+            'aes-256-gcm',
+            $key,
+            OPENSSL_RAW_DATA,
+            $nonce,
+            $tag,
+            '',
+            16
+        );
+
+        if ($ciphertext === false) {
+            throw new RuntimeException('Token encryption failed');
+        }
+
+        // Combine nonce + tag + ciphertext
+        return base64_encode($nonce . $tag . $ciphertext);
+    }
+
+    /**
+     * Decrypt token data
+     */
+    private function decryptTokenData(string $encrypted): ?string
+    {
+        $key = $this->getEncryptionKey();
+        $decoded = base64_decode($encrypted, true);
+
+        if ($decoded === false || strlen($decoded) < 28) { // 12 (nonce) + 16 (tag)
+            return null;
+        }
+
+        $nonce = substr($decoded, 0, 12);
+        $tag = substr($decoded, 12, 16);
+        $ciphertext = substr($decoded, 28);
+
+        $decrypted = openssl_decrypt(
+            $ciphertext,
+            'aes-256-gcm',
+            $key,
+            OPENSSL_RAW_DATA,
+            $nonce,
+            $tag
+        );
+
+        return $decrypted !== false ? $decrypted : null;
+    }
+
+    /**
+     * Get or generate encryption key for token storage
+     */
+    private function getEncryptionKey(): string
+    {
+        // Use a key from configuration or generate one
+        // In production, store this in environment variable
+        $key = defined('QUICKBOOKS_ENCRYPTION_KEY') ? QUICKBOOKS_ENCRYPTION_KEY : null;
+
+        if (!$key) {
+            // Fallback: derive key from client secret (not ideal but better than nothing)
+            $key = hash('sha256', $this->clientSecret . 'token_encryption', true);
+        } elseif (strlen($key) !== 32) {
+            // Ensure key is 32 bytes for AES-256
+            $key = hash('sha256', $key, true);
+        }
+
+        return $key;
     }
 
     private function requireConfiguration(): void

@@ -14,10 +14,27 @@ require_once __DIR__ . '/security_middleware.php';
 setSecurityHeaders();
 
 $bookingId = $_GET['id'] ?? '';
+$email = $_GET['email'] ?? '';
+
+// Rate limiting to prevent enumeration attacks
+$rateLimitId = 'get_booking_' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+if (!checkRateLimit($rateLimitId, 10, 300)) { // 10 requests per 5 minutes
+    http_response_code(429);
+    echo json_encode(['success' => false, 'message' => 'Too many requests']);
+    exit;
+}
 
 if ($bookingId === '') {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Booking ID required']);
+    exit;
+}
+
+// Require email verification to access booking details
+// This prevents unauthorized enumeration of booking IDs
+if ($email === '') {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'Email verification required']);
     exit;
 }
 
@@ -47,5 +64,17 @@ if (!$booking) {
     echo json_encode(['success' => false, 'message' => 'Booking not found']);
     exit;
 }
+
+// Verify email matches booking (case-insensitive comparison)
+if (strcasecmp($booking['email'], $email) !== 0) {
+    // Log unauthorized access attempt
+    error_log("Unauthorized booking access attempt: Booking {$bookingId}, provided email: {$email}, IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Email verification failed']);
+    exit;
+}
+
+// Remove sensitive staff/internal data before returning to customer
+unset($booking['customer_id']);
 
 echo json_encode(['success' => true, 'booking' => $booking]);

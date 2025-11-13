@@ -28,19 +28,27 @@ if ($unreadResult && $row = $unreadResult->fetch_assoc()) {
     $unreadResult->free();
 }
 
-$whereClause = '';
-if (!empty($_GET['unread_only'])) {
-    $whereClause = 'WHERE is_read = 0';
-}
+// Use parameterized WHERE clause instead of string interpolation
+$unreadOnly = !empty($_GET['unread_only']) ? 1 : 0;
 
-$stmt = $conn->prepare("
-    SELECT id, type, booking_id, customer_id, staff_id, payload, is_read, created_at
-    FROM notifications
-    $whereClause
-    ORDER BY created_at DESC
-    LIMIT ?
-");
-$stmt->bind_param('i', $limit);
+if ($unreadOnly) {
+    $stmt = $conn->prepare("
+        SELECT id, type, booking_id, customer_id, staff_id, payload, is_read, created_at
+        FROM notifications
+        WHERE is_read = 0
+        ORDER BY created_at DESC
+        LIMIT ?
+    ");
+    $stmt->bind_param('i', $limit);
+} else {
+    $stmt = $conn->prepare("
+        SELECT id, type, booking_id, customer_id, staff_id, payload, is_read, created_at
+        FROM notifications
+        ORDER BY created_at DESC
+        LIMIT ?
+    ");
+    $stmt->bind_param('i', $limit);
+}
 $stmt->execute();
 $result = $stmt->get_result();
 
@@ -111,8 +119,12 @@ function handle_post(array $payload): void
             if (empty($ids)) {
                 json_response(['success' => false, 'message' => 'Notification IDs required'], 400);
             }
-            $in = implode(',', $ids);
-            $conn->query("UPDATE notifications SET is_read = 1 WHERE id IN ($in)");
+            // Use prepared statement with placeholders instead of string interpolation
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $conn->prepare("UPDATE notifications SET is_read = 1 WHERE id IN ($placeholders)");
+            $stmt->bind_param(str_repeat('i', count($ids)), ...$ids);
+            $stmt->execute();
+            $stmt->close();
             json_response(['success' => true, 'message' => 'Notifications marked as read']);
         case 'mark_all_read':
             $conn->query("UPDATE notifications SET is_read = 1 WHERE is_read = 0");

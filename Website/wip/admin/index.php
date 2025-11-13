@@ -9,11 +9,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    if ($username === '' || $password === '') {
+    // Rate limiting: max 5 login attempts per 15 minutes per IP
+    $rateLimitIdentifier = 'login_' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+    if (!checkRateLimit($rateLimitIdentifier, 5, 900)) {
+        $error = 'Too many login attempts. Please try again in 15 minutes.';
+        error_log("Login rate limit exceeded for IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+    } elseif ($username === '' || $password === '') {
         $error = 'Please provide both username and password.';
     } elseif (!auth_login($username, $password)) {
         $error = 'Invalid credentials or inactive account.';
+        // Log failed login attempt
+        error_log("Failed login attempt for username: {$username} from IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
     } else {
+        // Successful login - regenerate session ID
+        session_regenerate_id(true);
+        $_SESSION['created'] = time();
         header('Location: dashboard.php');
         exit;
     }

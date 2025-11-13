@@ -45,9 +45,37 @@ function handleCreateInvoice(): void
         json_response(['success' => false, 'error' => 'Booking ID and a positive amount are required'], 400);
     }
 
+    // Validate amount upper limit (prevent absurdly large values)
+    if ($amount > 100000.00) {
+        json_response(['success' => false, 'error' => 'Invoice amount exceeds maximum allowed'], 400);
+    }
+
+    // Validate dueDate format if provided
+    if ($dueDate !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dueDate)) {
+        json_response(['success' => false, 'error' => 'Invalid due date format. Expected Y-m-d'], 400);
+    }
+
     $booking = getBooking($bookingId);
     if (!$booking) {
         json_response(['success' => false, 'error' => 'Booking not found'], 404);
+    }
+
+    // Validate amount matches booking price (with some tolerance for adjustments)
+    $estimatedPrice = (float) ($booking['estimated_price'] ?? 0);
+    $finalPrice = (float) ($booking['final_price'] ?? $estimatedPrice);
+    $expectedPrice = $finalPrice > 0 ? $finalPrice : $estimatedPrice;
+
+    // Allow up to 20% variance from expected price (for adjustments/discounts)
+    if ($expectedPrice > 0) {
+        $variance = abs($amount - $expectedPrice) / $expectedPrice;
+        if ($variance > 0.20) {
+            json_response([
+                'success' => false,
+                'error' => 'Invoice amount differs significantly from booking price',
+                'expected_price' => $expectedPrice,
+                'provided_amount' => $amount
+            ], 400);
+        }
     }
 
     try {

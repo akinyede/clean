@@ -98,7 +98,7 @@ function sanitizeInput($input, $type = 'string'): mixed
         case 'string':
         default:
             $input = trim($input);
-            $input = stripslashes($input);
+            // stripslashes() removed - use prepared statements for SQL, htmlspecialchars for output
             return htmlspecialchars($input, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 }
@@ -300,8 +300,10 @@ function setSecurityHeaders(): void
         header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
     }
 
-    // Content Security Policy
-    header("Content-Security-Policy: default-src 'self' https:; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https:; frame-src 'self';");
+    // Content Security Policy - Improved without unsafe-inline for scripts
+    // Removed data: from img-src to prevent data exfiltration
+    // Note: Tailwind CSS from CDN may require style-src 'unsafe-inline' temporarily
+    header("Content-Security-Policy: default-src 'self' https:; script-src 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; img-src 'self' https:; font-src 'self' https:; connect-src 'self' https:; frame-src 'self';");
     
     // Permissions Policy
     header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
