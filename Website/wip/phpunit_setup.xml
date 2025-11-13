@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="vendor/autoload.php"
+         colors="true"
+         verbose="true"
+         stopOnFailure="false">
+    <testsuites>
+        <testsuite name="Unit Tests">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Integration Tests">
+            <directory>tests/Integration</directory>
+        </testsuite>
+    </testsuites>
+    
+    <filter>
+        <whitelist processUncoveredFilesFromWhitelist="true">
+            <directory suffix=".php">src</directory>
+        </whitelist>
+    </filter>
+    
+    <php>
+        <env name="DB_HOST" value="localhost"/>
+        <env name="DB_NAME" value="test_wasatch_cleaners"/>
+        <env name="DB_USER" value="test_user"/>
+        <env name="DB_PASS" value="test_pass"/>
+    </php>
+</phpunit>
