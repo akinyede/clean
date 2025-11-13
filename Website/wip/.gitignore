@@ -10,6 +10,7 @@ config.php
 /logs/
 /temp/
 bookings.log
+error_log
 *.log
 
 # IDE and editor files
@@ -25,3 +26,7 @@ Thumbs.db
 
 # Uploaded files
 /uploads/
+
+# Composer cache and local composer artifacts (not for VCS)
+/.composer/
+composer.phar

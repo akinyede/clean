@@ -4,8 +4,10 @@
 
 class SettingsManager {
     constructor() {
-        this.apiClient = new ApiClient();
+        const ApiClientRef = (window.AdminUtils && window.AdminUtils.ApiClient) || window.ApiClient;
+        this.apiClient = typeof ApiClientRef === 'function' ? new ApiClientRef() : ApiClientRef;
         this.settings = {};
+        this.endpoints = (window.ADMIN_CONFIG && window.ADMIN_CONFIG.endpoints) || {};
         this.init();
     }
 
@@ -17,8 +19,9 @@ class SettingsManager {
 
     async loadSettings() {
         try {
-            const response = await this.apiClient.get('settings');
-            this.settings = response.data || {};
+            const url = this.endpoints.settings || 'api/settings.php';
+            const response = await this.apiClient.get(url);
+            this.settings = response.settings || response.data || {};
             this.populateForm();
         } catch (error) {
             console.error('Failed to load settings:', error);
@@ -102,38 +105,28 @@ class SettingsManager {
     async saveSettings() {
         try {
             showGlobalLoader();
-            
-            const formData = new FormData();
-            
-            // Business Information
-            formData.append('business_name', document.getElementById('businessName').value);
-            formData.append('email', document.getElementById('supportEmail').value);
-            formData.append('phone', document.getElementById('phoneNumber').value);
-            formData.append('default_duration', document.getElementById('defaultDuration').value);
 
-            // Notification Preferences
-            formData.append('notify_email_bookings', document.getElementById('notifyEmailBookings').checked ? '1' : '0');
-            formData.append('notify_email_payments', document.getElementById('notifyEmailPayments').checked ? '1' : '0');
-            formData.append('notify_email_staff', document.getElementById('notifyEmailStaff').checked ? '1' : '0');
-            formData.append('notify_sms_bookings', document.getElementById('notifySMSBookings').checked ? '1' : '0');
-            formData.append('notify_sms_reminders', document.getElementById('notifySMSReminders').checked ? '1' : '0');
-            formData.append('notify_sms_updates', document.getElementById('notifySMSUpdates').checked ? '1' : '0');
+            // Build JSON payload expected by the API
+            const payload = {
+                business_name: document.getElementById('businessName').value,
+                email: document.getElementById('supportEmail').value,
+                phone: document.getElementById('phoneNumber').value,
+                default_duration: parseInt(document.getElementById('defaultDuration').value || '180', 10),
+                // Aggregate toggles so current API can store a compact preference
+                notify_email: (
+                    document.getElementById('notifyEmailBookings').checked ||
+                    document.getElementById('notifyEmailPayments').checked ||
+                    document.getElementById('notifyEmailStaff').checked
+                ) ? 1 : 0,
+                notify_sms: (
+                    document.getElementById('notifySMSBookings').checked ||
+                    document.getElementById('notifySMSReminders').checked ||
+                    document.getElementById('notifySMSUpdates').checked
+                ) ? 1 : 0,
+            };
 
-            // Business Hours
-            const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-            days.forEach(day => {
-                const openInput = document.querySelector(`input[name="business_hours[${day}][open]"]`);
-                const closeInput = document.querySelector(`input[name="business_hours[${day}][close]"]`);
-                const closedInput = document.querySelector(`input[name="business_hours[${day}][closed]"]`);
-                
-                if (openInput && closeInput && closedInput) {
-                    formData.append(`business_hours[${day}][open]`, openInput.value);
-                    formData.append(`business_hours[${day}][close]`, closeInput.value);
-                    formData.append(`business_hours[${day}][closed]`, closedInput.checked ? '1' : '0');
-                }
-            });
-
-            await this.apiClient.post('settings', formData);
+            const url = this.endpoints.settings || 'api/settings.php';
+            await this.apiClient.post(url, payload);
             this.showSuccessMessage();
         } catch (error) {
             console.error('Failed to save settings:', error);
