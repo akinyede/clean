@@ -1,0 +1,106 @@
+<?php
+/**
+ * Improved send-reminders.php with graceful shutdown
+ * Handles SIGTERM, SIGINT for clean exits
+ */
+
+require_once 'config.php';
+
+// Graceful shutdown flag
+$shutdown = false;
+
+// Signal handlers for graceful shutdown
+if (function_exists('pcntl_signal')) {
+    pcntl_signal(SIGTERM, function() use (&$shutdown) {
+        echo "\nReceived SIGTERM, shutting down gracefully...\n";
+        $shutdown = true;
+    });
+    
+    pcntl_signal(SIGINT, function() use (&$shutdown) {
+        echo "\nReceived SIGINT, shutting down gracefully...\n";
+        $shutdown = true;
+    });
+}
+
+echo "Queue processor started at " . date('Y-m-d H:i:s') . "\n";
+echo "PID: " . getmypid() . "\n";
+
+$maxRuntime = 3600; // Run for max 1 hour, then restart
+$startTime = time();
+
+while (!$shutdown && (time() - $startTime) < $maxRuntime) {
+    if (function_exists('pcntl_signal_dispatch')) {
+        pcntl_signal_dispatch(); // Handle signals
+    }
+    
+    try {
+        $conn = getDatabaseConnection();
+        
+        $stmt = $conn->prepare("
+            SELECT id, booking_id, phone, message 
+            FROM scheduled_reminders 
+            WHERE status = 'pending' 
+            AND send_at <= NOW() 
+            ORDER BY send_at ASC
+            LIMIT 10
+        ");
+        
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows === 0) {
+            $stmt->close();
+            $conn->close();
+            sleep(5);
+            continue;
+        }
+        
+        while ($reminder = $result->fetch_assoc()) {
+            if ($shutdown) {
+                echo "Shutdown requested, stopping processing\n";
+                break;
+            }
+            
+            echo "Processing reminder {$reminder['id']}...\n";
+            
+            $success = sendSMS($reminder['phone'], $reminder['message']);
+            
+            if ($success) {
+                updateReminderStatus($reminder['id'], 'sent', null);
+                echo "✓ Sent\n";
+            } else {
+                updateReminderStatus($reminder['id'], 'failed', 'SMS service error');
+                echo "✗ Failed\n";
+            }
+            
+            sleep(1);
+        }
+        
+        $stmt->close();
+        $conn->close();
+        
+    } catch (Exception $e) {
+        error_log("Reminder processor error: " . $e->getMessage());
+        sleep(10);
+    }
+}
+
+echo "Reminder processor shutting down cleanly at " . date('Y-m-d H:i:s') . "\n";
+exit(0); // Clean exit
+
+function sendSMS($phone, $message) {
+    // Implementation here
+    return true;
+}
+
+function updateReminderStatus($id, $status, $error) {
+    // Implementation here
+}
+
+function getDatabaseConnection() {
+    $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+    if ($conn->connect_error) {
+        throw new Exception("Database connection failed");
+    }
+    return $conn;
+}

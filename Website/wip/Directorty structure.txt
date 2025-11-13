@@ -1,0 +1,53 @@
+booking-application/
+├── .env.example                 ← Rename to `.env` and fill in credentials
+├── composer.json                ← For PHP dependencies (PHPMailer, TCPDF, QuickBooks helpers)
+├── .gitignore
+├── README.md
+│
+├── public/                      ← 🟢 SET THIS AS YOUR cPanel DOCUMENT ROOT
+│   ├── index.html               ← Homepage (from main site.docx)
+│   ├── booking.php              ← Booking form
+│   ├── booking.js
+│   ├── logo.png
+│   ├── w_logo.png
+│   └── .htaccess                ← Optional: for clean URLs or security headers
+│
+├── admin/                       ← Admin portal (web-accessible via /admin)
+│   ├── index.php                ← Login page
+│   ├── dashboard.php            ← ✅ Modern dashboard (teal sidebar, calendar, chart)
+│   ├── dashboard.js             ← Enhanced JS with calendar & staff assignment
+│   ├── bookings.php             ← Booking management UI
+│   ├── logout.php
+│   └── api/                     ← All admin API endpoints (read-only for now)
+│       ├── overview.php
+│       ├── bookings.php
+│       ├── customers.php
+│       ├── staff.php
+│       ├── invoices.php
+│       ├── notifications.php
+│       ├── reports.php
+│       ├── settings.php
+│       ├── assignments.php      ← Staff assignment logic
+│       └── booking-detail.php
+│
+├── app/                         ← 🛡️ Core backend logic (NOT web-accessible)
+│   ├── bootstrap.php
+│   ├── config.php               ← Loads from .env
+│   ├── database.php
+│   ├── auth.php
+│   ├── logger.php
+│   ├── helpers.php
+│   ├── notify.php
+│   └── security_middleware.php
+│
+├── cron/                        ← Cron scripts (run via cPanel cron jobs)
+│   └── cron_reminders.php       ← Sends SMS/email reminders
+│
+├── temp/                        ← Temporary files (PDFs, uploads) – auto-created
+├── logs/                        ← Application logs – auto-created
+├── uploads/                     ← For future file uploads (invoices, photos)
+│
+├── vendor/                      ← Created by `composer install`
+│
+└── utils/                       ← Optional: dev-only tools (delete in production)
+    └── check-server.php         ← Run once, then DELETE
