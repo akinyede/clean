@@ -1,4 +1,4 @@
-# Clean — Cleaning Service Booking & Operations
+# Clean App— Cleaning Service Booking & Operations
 
 Clean is a work‑in‑progress PHP platform for residential/commercial cleaning services. It enables online bookings and quote requests, staff scheduling, customer and payment management, reminders, and admin reporting.
 
